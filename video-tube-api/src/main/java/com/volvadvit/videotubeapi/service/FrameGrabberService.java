@@ -10,7 +10,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 
-import static com.volvadvit.videotubeapi.utils.OpenCVUtils.removeFileExt;
+import static com.volvadvit.videotubeapi.utils.Utils.getFileNameWithoutExt;
 
 @Service
 public class FrameGrabberService {
@@ -29,7 +29,7 @@ public class FrameGrabberService {
             for (int i = 0; i < 50; i++) {
                 image = converter.convert(g.grabKeyFrame());
                 if (image != null) {
-                    File file = Path.of( removeFileExt(filePath.toString()) + ".jpeg").toFile();
+                    File file = Path.of( getFileNameWithoutExt(filePath.toString()) + ".jpeg").toFile();
                     ImageIO.write(image, "jpeg", file);
                     break;
                 }
