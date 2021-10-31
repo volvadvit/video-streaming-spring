@@ -7,6 +7,7 @@ import com.volvadvit.videotubeapi.repository.VideoMetadataRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpRange;
 import org.springframework.stereotype.Service;
 
 import javax.transaction.Transactional;
@@ -68,7 +69,7 @@ public class VideoService {
             metadata.setVideoLength(videoLength);
             videoRepo.save(metadata);
         } catch (IOException ex) {
-            log.error("", ex);
+            log.error(ex.getMessage());
             throw new IllegalStateException(ex);
         }
     }
@@ -86,9 +87,60 @@ public class VideoService {
                     try {
                         return Optional.of(Files.newInputStream(previewPicturePath));
                     } catch (IOException ex) {
-                        log.error("", ex);
+                        log.error(ex.getMessage());
                         return Optional.empty();
                     }
                 });
+    }
+
+    public Optional<StreamBytesInfo> getStreamBytes(Long id, HttpRange range) {
+        Optional<VideoMetadata> vmdById = videoRepo.findById(id);
+        if (vmdById.isEmpty()) {
+            log.error("Video with id: {} not found", id);
+            return Optional.empty();
+        }
+
+        Path filePath = Path.of(dataFolder, String.valueOf(id), vmdById.get().getFileName());
+        if (!Files.exists(filePath)) {
+            log.error("File {} not found", filePath);
+            return Optional.empty();
+        }
+
+        try {
+            long fileSize = Files.size(filePath);
+            long chunkSize = fileSize / 100; // took 1/100 part of file size
+
+            //If no range is specified
+            if (range == null) {
+                return Optional.of(new StreamBytesInfo(
+                        out -> Files.newInputStream(filePath).transferTo(out),
+                        fileSize,
+                        0,
+                        fileSize,
+                        vmdById.get().getContentType()));
+            }
+
+            long rangeStart = range.getRangeStart(0); // Will be 0 if not specified
+            long rangeEnd = rangeStart + chunkSize; // range.getRangeEnd(fileSize);
+
+            if (rangeEnd >= fileSize) {
+                rangeEnd = fileSize - 1;
+            }
+
+            final long finalRangeEnd = rangeEnd;
+
+            return Optional.of(new StreamBytesInfo(
+                    out -> {
+                        try (InputStream inputStream = Files.newInputStream(filePath)) {
+                            inputStream.skip(rangeStart);
+                            byte[] bytes = inputStream.readNBytes((int) ((finalRangeEnd - rangeStart) + 1));
+                            out.write(bytes);
+                        }
+                    },
+                    fileSize, rangeStart, rangeEnd, vmdById.get().getContentType()));
+        } catch (IOException ex) {
+            log.error(ex.getMessage());
+            return Optional.empty();
+        }
     }
 }
